@@ -1,0 +1,264 @@
+Option Explicit
+
+Private Banco As ADODB.Connection
+Private Tabela As ADODB.Recordset
+
+Public ComandoSql As String
+Public Registros As Integer
+Public Resultado() As Variant
+
+Private Function Conectar() As Boolean
+
+On Error GoTo Erro
+
+    Dim Caminho As String, Arquivo As String
+    
+    Caminho = ThisWorkbook.Path
+    
+    Set Banco = New ADODB.Connection
+    
+    Banco.Open "Driver={MySQL ODBC 8.0 ANSI Driver};Server="Host":"Porta";Database="DataBase";Uid="Usuario";Pwd="Senha";"
+   
+Erro:
+    
+    If VBA.Err Then
+        Conectar = False
+        MsgBox "Erro na Função Conectar" & VBA.Chr(10) & VBA.Chr(10) & "Erro: " & _
+        VBA.Err.Description, vbCritical, "ATENÇÃO!"
+    Else
+        Conectar = True
+    End If
+    
+End Function
+
+
+Public Function ExecutarSQL(Sql As String) As Boolean
+
+On Error GoTo Erro
+    ExecutarSQL = False
+    
+    If Conectar = False Then Exit Function
+
+    Banco.Execute Sql
+    
+    Call Desconectar
+    
+    VBA.Err = Empty
+    
+Erro:
+    
+    If VBA.Err Then
+        MsgBox "Erro Executar SQL!" & VBA.Chr(10) & VBA.Chr(10) & _
+        VBA.Err.Description & VBA.Chr(10) & VBA.Chr(10) & "SQL: " & Sql, vbCritical, "ATENÇÃO!!!"
+    Else
+        ExecutarSQL = True
+    End If
+    
+End Function
+
+Private Sub Desconectar()
+
+    If Not Tabela Is Nothing Then
+        If Tabela.State = 1 Then Tabela.Close
+        Set Tabela = Nothing
+    End If
+    
+    If Not Banco Is Nothing Then
+        If Banco.State = 1 Then Banco.Close
+        Set Banco = Nothing
+    End If
+        
+End Sub
+
+Private Function SQL_INSERT(Tabela As String, c() As String, v() As String) As String
+    
+    Dim Sql As String
+    
+    Sql = "INSERT INTO " & Tabela & " (" & VBA.Join(c, ", ") & ") "
+    Sql = Sql & "VALUES('" & VBA.Join(v, "', '") & "')"
+    
+    SQL_INSERT = Sql
+    
+End Function
+
+
+Public Function Salvar(Tabela As String, c() As String, v() As String, Id As String) As Boolean
+    
+    Dim Sql As String
+    
+    If Id = Empty Then
+        Sql = SQL_INSERT(Tabela, c, v)
+    Else
+        Sql = SQL_UPDATE(Tabela, c, v, Id)
+    End If
+    
+    Sql = Replace(Sql, "'null'", "null")
+    Sql = Replace(Sql, "'%$#@", Empty)
+    Sql = Replace(Sql, "%$#@'", Empty)
+        
+    Salvar = ExecutarSQL(Sql)
+    
+End Function
+
+
+Private Function SQL_UPDATE(Tabela As String, c() As String, v() As String, Id As String) As String
+    
+    Dim Sql As String
+    
+    Dim Total As Integer, i As Integer
+    Total = UBound(c, 1)
+        
+    For i = 1 To Total
+        c(i) = c(i) & " = '" & v(i) & "'"
+    Next
+    
+    Sql = "UPDATE " & Tabela & " SET " & VBA.Join(c, ", ")
+    Sql = Sql & " WHERE " & Tabela & "_Id = " & Id
+    
+    SQL_UPDATE = Sql
+    
+    
+    
+End Function
+
+
+Public Function CvData(Data As String) As String
+
+    If VBA.Trim(Data) = Empty Then
+        CvData = "null"
+    Else
+        Data = VBA.Format(VBA.CDate(Data), "yyyy-mm-dd")
+        
+        CvData = Data
+    End If
+
+End Function
+
+Public Function CvHora(Hora As String) As String
+
+    If VBA.Trim(Hora) = Empty Then
+        CvHora = "null"
+    Else
+        Hora = VBA.Format(VBA.TimeValue(Hora), "hh:mm:ss")
+        
+        CvHora = Hora
+    End If
+
+End Function
+
+
+Public Function CvNum(Valor As String) As String
+    
+    If VBA.Trim(Valor) = Empty Then
+        CvNum = "0"
+    Else
+    
+        
+        Valor = VBA.Replace(Valor, "R", Empty)
+        Valor = VBA.Replace(Valor, "$", Empty)
+        Valor = VBA.Replace(Valor, ".", Empty)
+        Valor = VBA.Replace(Valor, "%", Empty)
+        Valor = VBA.Replace(Valor, ",", ".")
+        
+        Valor = VBA.Trim(Valor)
+        
+        CvNum = "%$#@" & Valor & "%$#@"
+        
+    End If
+    
+End Function
+Public Function CvNum2(Valor As String) As String
+    
+    If VBA.Trim(Valor) = Empty Then
+        CvNum2 = "0"
+    Else
+    
+        
+        Valor = VBA.Replace(Valor, "R", Empty)
+        Valor = VBA.Replace(Valor, "$", Empty)
+        Valor = VBA.Replace(Valor, ".", Empty)
+        Valor = VBA.Replace(Valor, ",", ".")
+        
+        Valor = VBA.Trim(Valor)
+        
+    End If
+    
+End Function
+
+
+Public Function BuscarSQL(Sql As String, Optional Guia As String = Empty, _
+                        Optional Celula As String = Empty) As Long
+    
+    BuscarSQL = 0
+    
+    If Conectar = False Then Exit Function
+
+On Error GoTo Erro
+
+    Set Tabela = New ADODB.Recordset
+    Tabela.CursorLocation = adUseClient
+    Tabela.CursorType = adOpenStatic
+    
+    Tabela.Open Sql, Banco
+    
+    BuscarSQL = Tabela.RecordCount
+    
+    If Guia = Empty Then
+        Resultado = Tabela.GetRows
+    Else
+        Sheets(Guia).Range(Celula).CopyFromRecordset Tabela
+    End If
+
+Erro:
+
+    Call Desconectar
+    
+    Exit Function
+    
+    If VBA.Err Then
+        MsgBox "Erro Buscar SQL!" & VBA.Chr(10) & VBA.Chr(10) & VBA.Err.Description & _
+        VBA.Chr(10) & VBA.Chr(10) & "SQL: " & Sql, vbCritical, "ATENÇÃO!"
+    End If
+    
+End Function
+
+Function AcSQL(Valor As String) As String
+    
+    Dim n, t, v
+    t = ""
+    
+    For n = 1 To VBA.Len(Valor)
+    
+        v = VBA.Asc(VBA.Mid(Valor, n, 1))
+        
+        Select Case v
+            
+            Case 39: t = t & "''"
+            Case 65: t = t & "[ÁÀÂÄÃA]"
+            Case 67: t = t & "[ÇC]"
+            Case 69: t = t & "[ÉÈÊËE]"
+            Case 73: t = t & "[ÍÌÎÏI]"
+            Case 79: t = t & "[ÓÒÔÖÕO]"
+            Case 85: t = t & "[ÚÙÛÜU]"
+            Case 97: t = t & "[áàâäãa]"
+            Case 99: t = t & "[çc]"
+            Case 101: t = t & "[éèêëe]"
+            Case 105: t = t & "[íìîïi]"
+            Case 111: t = t & "[óòôöõo]"
+            Case 117: t = t & "[úùûüu]"
+            
+            Case Else
+            
+                If v > 31 And v < 127 Then
+                    t = t & VBA.Chr(v)
+                Else
+                    t = t & "_"
+                End If
+                
+        End Select
+        
+    Next
+    
+    AcSQL = t
+
+End Function
